@@ -1,0 +1,321 @@
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+
+  # ─────────────────────────────────────────
+  # BUCKETS S3 — Data Lake
+  # ─────────────────────────────────────────
+
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-raw-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+      PublicAccessBlockConfiguration:
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  RawDataBucketBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref RawDataBucket
+      PolicyDocument:
+        Id: RequireEncryptionInTransit
+        Version: '2012-10-17'
+        Statement:
+          - Principal: '*'
+            Action: '*'
+            Effect: Deny
+            Resource:
+              - !GetAtt RawDataBucket.Arn
+              - !Sub ${RawDataBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  ProcessedDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-processed-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+      PublicAccessBlockConfiguration:
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ProcessedDataBucketBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ProcessedDataBucket
+      PolicyDocument:
+        Id: RequireEncryptionInTransit
+        Version: '2012-10-17'
+        Statement:
+          - Principal: '*'
+            Action: '*'
+            Effect: Deny
+            Resource:
+              - !GetAtt ProcessedDataBucket.Arn
+              - !Sub ${ProcessedDataBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::StackName}-output-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+      PublicAccessBlockConfiguration:
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  OutputBucketBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref OutputBucket
+      PolicyDocument:
+        Id: RequireEncryptionInTransit
+        Version: '2012-10-17'
+        Statement:
+          - Principal: '*'
+            Action: '*'
+            Effect: Deny
+            Resource:
+              - !GetAtt OutputBucket.Arn
+              - !Sub ${OutputBucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  # ─────────────────────────────────────────
+  # DYNAMODB — Tabla de predicciones
+  # ─────────────────────────────────────────
+
+  PrediccionesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: StoreId
+          AttributeType: S
+        - AttributeName: Fecha
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: StoreId
+          KeyType: HASH
+        - AttributeName: Fecha
+          KeyType: RANGE
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # ─────────────────────────────────────────
+  # LAMBDA ETL — Limpieza y carga de datos
+  # ─────────────────────────────────────────
+
+  LambdaETL:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: LambdaETL
+      CodeUri: src/etl
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 300
+      Tracing: Active
+      Policies:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PrediccionesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:GetObjectAcl
+                - s3:GetObjectLegalHold
+                - s3:GetObjectRetention
+                - s3:GetObjectTorrent
+                - s3:GetObjectVersion
+                - s3:GetObjectVersionAcl
+                - s3:GetObjectVersionForReplication
+                - s3:GetObjectVersionTorrent
+                - s3:ListBucket
+                - s3:ListBucketMultipartUploads
+                - s3:ListBucketVersions
+                - s3:ListMultipartUploadParts
+                - s3:AbortMultipartUpload
+                - s3:DeleteObject
+                - s3:DeleteObjectVersion
+                - s3:PutObject
+                - s3:PutObjectLegalHold
+                - s3:PutObjectRetention
+                - s3:RestoreObject
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${ProcessedDataBucket}
+                - !Sub arn:${AWS::Partition}:s3:::${ProcessedDataBucket}/*
+                - !Sub arn:${AWS::Partition}:s3:::${RawDataBucket}
+                - !Sub arn:${AWS::Partition}:s3:::${RawDataBucket}/*
+      Events:
+        RawDataBucket:
+          Type: S3
+          Properties:
+            Bucket: !Ref RawDataBucket
+            Events:
+              - s3:ObjectCreated:*
+      Environment:
+        Variables:
+          RAW_BUCKET: !Ref RawDataBucket
+          PROCESSED_BUCKET: !Ref ProcessedDataBucket
+          TABLE_NAME: !Ref PrediccionesTable
+          TABLE_ARN: !GetAtt PrediccionesTable.Arn
+
+  LambdaETLLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaETL}
+
+  # ─────────────────────────────────────────
+  # LAMBDA INFERENCIA — Predicciones
+  # ─────────────────────────────────────────
+
+  LambdaInferencia:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description: !Sub
+        - Stack ${AWS::StackName} Function ${ResourceName}
+        - ResourceName: LambdaInferencia
+      CodeUri: src/inferencia
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      MemorySize: 512
+      Timeout: 30
+      Tracing: Active
+      Policies:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PrediccionesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:PutObjectAcl
+              Resource:
+                - !Sub arn:${AWS::Partition}:s3:::${OutputBucket}
+                - !Sub arn:${AWS::Partition}:s3:::${OutputBucket}/*
+            - Effect: Allow
+              Action:
+                - sagemaker:InvokeEndpoint
+              Resource: '*'
+      Events:
+        ApiGatewayPOSTprediccion:
+          Type: Api
+          Properties:
+            Path: /prediccion
+            Method: POST
+            RestApiId: !Ref ApiGateway
+        ApiGatewayGETpredicciones:
+          Type: Api
+          Properties:
+            Path: /predicciones/{store_id}
+            Method: GET
+            RestApiId: !Ref ApiGateway
+      Environment:
+        Variables:
+          PREDICCIONESTABLE_TABLE_NAME: !Ref PrediccionesTable
+          PREDICCIONESTABLE_TABLE_ARN: !GetAtt PrediccionesTable.Arn
+          SAGEMAKER_ENDPOINT: prediccion-demanda-endpoint
+          OUTPUT_BUCKET: !Ref OutputBucket
+
+  LambdaInferenciaLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${LambdaInferencia}
+
+  # ─────────────────────────────────────────
+  # API GATEWAY — Exposicion REST API
+  # ─────────────────────────────────────────
+
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Sub
+        - ${ResourceName} From Stack ${AWS::StackName}
+        - ResourceName: ApiGateway
+      StageName: Prod
+      DefinitionBody:
+        openapi: '3.0'
+        info: {}
+        paths:
+          /prediccion:
+            post:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaInferencia.Arn}/invocations
+              responses: {}
+          /predicciones/{store_id}:
+            get:
+              x-amazon-apigateway-integration:
+                httpMethod: POST
+                type: aws_proxy
+                uri: !Sub arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaInferencia.Arn}/invocations
+              responses: {}
+      EndpointConfiguration: REGIONAL
+      TracingEnabled: true
+      Cors:
+        MaxAge: 5
+
+  # ─────────────────────────────────────────
+  # EVENTBRIDGE — Reentrenamiento semanal
+  # ─────────────────────────────────────────
+
+  ReentrenamientoSemanal:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      ScheduleExpression: cron(0 6 ? * MON *)
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      ScheduleExpressionTimezone: Europe/Madrid
+      State: DISABLED
+      Target:
+        Arn: !GetAtt LambdaETL.Arn
+        RoleArn: !GetAtt ReentrenamientoSemanalToLambdaETLRole.Arn
+
+  ReentrenamientoSemanalToLambdaETLRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          Effect: Allow
+          Principal:
+            Service: !Sub scheduler.${AWS::URLSuffix}
+          Action: sts:AssumeRole
+          Condition:
+            ArnLike:
+              aws:SourceArn: !Sub
+                - arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/*/${AWS::StackName}-${ResourceId}-*
+                - ResourceId: ReentrenamientoSemanal
+      Policies:
+        - PolicyName: StartExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt LambdaETL.Arn
