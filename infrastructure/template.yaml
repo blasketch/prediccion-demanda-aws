@@ -28,6 +28,7 @@ Resources:
 
   RawDataBucketPolicy:
     Type: AWS::S3::BucketPolicy
+    DependsOn: LambdaETL
     Properties:
       Bucket: !Ref RawDataBucket
       PolicyDocument:
@@ -140,13 +141,6 @@ Resources:
       MemorySize: 512
       Timeout: 300
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
-      Events:
-        S3Trigger:
-          Type: S3
-          Properties:
-            Bucket: !Ref RawDataBucket
-            Events:
-              - s3:ObjectCreated:*
       Environment:
         Variables:
           RAW_BUCKET: !Ref RawDataBucket
@@ -159,6 +153,14 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/lambda/${LambdaETL}
       RetentionInDays: 7
+
+  LambdaETLS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaETL.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !GetAtt RawDataBucket.Arn
 
   # ─────────────────────────────────────────
   # LAMBDA INFERENCIA — Predicciones
@@ -232,7 +234,7 @@ Resources:
 
   # ─────────────────────────────────────────
   # EVENTBRIDGE — Reentrenamiento semanal
-  # Desactivado para conservar creditos en Academy
+  # (DISABLED para conservar creditos Academy)
   # ─────────────────────────────────────────
 
   ReentrenamientoSemanal:
