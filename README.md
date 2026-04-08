@@ -22,7 +22,7 @@ El sistema está organizado en ocho zonas funcionales desplegadas sobre AWS:
 | Zona | Servicios |
 |---|---|
 | Ingesta de datos | Amazon S3 (Raw Data) |
-| Procesamiento | AWS Lambda + SageMaker Processing Job |
+| Procesamiento | AWS Lambda (trigger) + SageMaker Processing Job |
 | ML / Entrenamiento | SageMaker Training Job + Amazon S3 (Model Artifacts) |
 | Inferencia | SageMaker Endpoint + AWS Lambda + Amazon API Gateway |
 | Persistencia | Amazon DynamoDB + Amazon S3 (Predictions) |
@@ -42,9 +42,10 @@ prediccion-demanda-aws/
 │
 ├── src/
 │   ├── etl/
-│   │   └── lambda_function.py           # Lambda ETL — limpieza y carga de datos
+│   │   ├── lambda_function.py           # Lambda ETL — trigger S3 (detecta nuevos archivos)
+│   │   └── etl_pipeline.py              # Script ETL completo (ejecutable desde CloudShell o SageMaker)
 │   └── inferencia/
-│       └── lambda_function.py           # Lambda Inferencia — predicciones
+│       └── lambda_function.py           # Lambda Inferencia — predicciones via API Gateway
 │
 ├── notebooks/
 │   └── exploracion.ipynb                # Análisis exploratorio del dataset
@@ -53,7 +54,8 @@ prediccion-demanda-aws/
 │   └── dashboard.py                     # Dashboard de visualización (Streamlit)
 │
 ├── data/
-│   └── sample/                          # Muestra representativa del dataset (500 filas)
+│   └── sample/
+│       └── train_sample.csv             # Muestra representativa del dataset (500 filas)
 │
 └── README.md                            # Documentación del proyecto
 ```
@@ -75,12 +77,12 @@ prediccion-demanda-aws/
 ```
 s3://prediccion-demanda-raw-319501512128/
     └── rossmann/
-        ├── train.csv          # Histórico de ventas (~1M filas)
+        ├── train.csv          # Histórico de ventas (~1M filas, 38MB)
         └── store.csv          # Información de tiendas (1.115 filas)
 
 s3://prediccion-demanda-processed-319501512128/
     └── rossmann/
-        └── train_clean_YYYYMMDD_HHMMSS.csv   # Dataset limpio tras ETL
+        └── train_clean_YYYYMMDD_HHMMSS.csv   # Dataset limpio tras ETL (66MB)
 
 s3://prediccion-demanda-output-319501512128/
     └── predicciones/
@@ -91,20 +93,23 @@ s3://prediccion-demanda-output-319501512128/
 
 ## Pipeline ETL
 
-El proceso ETL se ejecuta mediante **AWS Lambda** (`src/etl/lambda_function.py`), activado automáticamente cuando se sube un archivo al bucket raw:
+El proceso ETL se ejecuta mediante el script `src/etl/etl_pipeline.py`, invocado desde CloudShell o SageMaker Processing Job. La función Lambda (`src/etl/lambda_function.py`) actúa como **trigger**, detectando automáticamente nuevos archivos subidos al bucket raw y orquestando el proceso.
 
-1. **Extracción:** Lectura de `train.csv` y `store.csv` desde S3 `/raw/rossmann/`
-2. **Limpieza:**
+**Flujo completo:**
+
+1. **Trigger:** Se sube un CSV al bucket S3 raw → Lambda detecta el evento `ObjectCreated`
+2. **Extracción:** Lectura de `train.csv` y `store.csv` desde S3 `/raw/rossmann/`
+3. **Limpieza:**
    - Filtrado de tiendas cerradas (`Open=0`) y ventas nulas (`Sales=0`)
    - Eliminación de duplicados
    - Tratamiento de nulos en `CompetitionDistance` (mediana) y columnas de promoción (0)
-3. **Transformación:**
+4. **Transformación:**
    - Merge de `train.csv` con `store.csv` por `Store`
    - Extracción de variables temporales: `Year`, `Month`, `Week`, `DayOfYear`
    - Codificación de variables categóricas: `StoreType`, `Assortment`, `StateHoliday`
-4. **Carga:** Escritura del dataset procesado en S3 `/processed/rossmann/`
+5. **Carga:** Escritura del dataset procesado en S3 `/processed/rossmann/`
 
-**Resultado del ETL:**
+**Resultado del ETL ejecutado:**
 - Filas entrada: 1.017.209
 - Filas salida: 844.338
 - Nulos restantes: 0
@@ -119,6 +124,13 @@ La infraestructura completa está definida en `infrastructure/template.yaml` usa
 ```bash
 # Descargar el template desde GitHub
 wget https://raw.githubusercontent.com/blasketch/prediccion-demanda-aws/main/infrastructure/template.yaml
+
+# Crear carpetas de código necesarias
+mkdir -p src/etl src/inferencia
+
+# Descargar código de las Lambdas
+wget -O src/etl/lambda_function.py https://raw.githubusercontent.com/blasketch/prediccion-demanda-aws/main/src/etl/lambda_function.py
+wget -O src/inferencia/lambda_function.py https://raw.githubusercontent.com/blasketch/prediccion-demanda-aws/main/src/inferencia/lambda_function.py
 
 # Desplegar con SAM
 sam deploy \
@@ -140,6 +152,8 @@ sam deploy \
 | S3 Processed | prediccion-demanda-processed-319501512128 | `arn:aws:s3:::prediccion-demanda-processed-319501512128` |
 | S3 Output | prediccion-demanda-output-319501512128 | `arn:aws:s3:::prediccion-demanda-output-319501512128` |
 | DynamoDB | PrediccionesTable | `arn:aws:dynamodb:us-east-1:319501512128:table/PrediccionesTable` |
+| Lambda ETL | prediccion-demanda-LambdaETL | `arn:aws:lambda:us-east-1:319501512128:function:prediccion-demanda-LambdaETL` |
+| Lambda Inferencia | prediccion-demanda-LambdaInferencia | `arn:aws:lambda:us-east-1:319501512128:function:prediccion-demanda-LambdaInferencia` |
 
 ---
 
