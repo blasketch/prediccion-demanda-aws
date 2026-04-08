@@ -37,32 +37,34 @@ El sistema está organizado en ocho zonas funcionales desplegadas sobre AWS:
 ```
 prediccion-demanda-aws/
 │
-├── data/
-│   └── sample/                  # Muestra representativa del dataset (500 filas)
+├── infrastructure/
+│   └── template.yaml                    # Infraestructura como código (SAM/CloudFormation)
 │
-├── etl/
-│   ├── etl_pipeline.py          # Script principal de limpieza y transformación
-│   └── upload_s3.py             # Script de carga de datos a S3
+├── src/
+│   ├── etl/
+│   │   └── lambda_function.py           # Lambda ETL — limpieza y carga de datos
+│   └── inferencia/
+│       └── lambda_function.py           # Lambda Inferencia — predicciones
 │
 ├── notebooks/
-│   └── exploracion.ipynb        # Análisis exploratorio del dataset
-│
-├── lambda/
-│   └── trigger_etl.py           # Función Lambda que orquesta el pipeline ETL
+│   └── exploracion.ipynb                # Análisis exploratorio del dataset
 │
 ├── streamlit/
-│   └── dashboard.py             # Dashboard de visualización de predicciones
+│   └── dashboard.py                     # Dashboard de visualización (Streamlit)
 │
-└── README.md
+├── data/
+│   └── sample/                          # Muestra representativa del dataset (500 filas)
+│
+└── README.md                            # Documentación del proyecto
 ```
 
 ---
 
 ## Dataset
 
-- **Fuente:** [Rossmann Store Sales — Kaggle](https://www.kaggle.com/competitions/rossmann-store-sales)
+- **Fuente:** [Rossmann Store Sales — Kaggle](https://www.kaggle.com/datasets/pratyushakar/rossmann-store-sales)
 - **Formato:** CSV
-- **Volumen:** ~1.000.000 filas (train.csv) + información de tiendas (store.csv)
+- **Volumen:** ~1.017.209 filas (train.csv) + información de tiendas (store.csv)
 - **Descripción:** Histórico de ventas diarias de 1.115 tiendas en 7 países europeos
 - **Columnas principales:** `Store`, `Date`, `Sales`, `Customers`, `Open`, `Promo`, `StateHoliday`, `SchoolHoliday`
 
@@ -71,57 +73,96 @@ prediccion-demanda-aws/
 ## Estructura S3 (Data Lake)
 
 ```
-s3://prediccion-demanda-raw/
+s3://prediccion-demanda-raw-319501512128/
     └── rossmann/
-        └── train.csv
-        └── store.csv
+        ├── train.csv          # Histórico de ventas (~1M filas)
+        └── store.csv          # Información de tiendas (1.115 filas)
 
-s3://prediccion-demanda-processed/
+s3://prediccion-demanda-processed-319501512128/
     └── rossmann/
-        └── train_clean.csv
+        └── train_clean_YYYYMMDD_HHMMSS.csv   # Dataset limpio tras ETL
 
-s3://prediccion-demanda-output/
+s3://prediccion-demanda-output-319501512128/
     └── predicciones/
-        └── predicciones_semana_XX.csv
+        └── predicciones_YYYYMMDD.csv          # Predicciones generadas por el modelo
 ```
 
 ---
 
 ## Pipeline ETL
 
-El proceso ETL se ejecuta mediante un **SageMaker Processing Job** orquestado por AWS Lambda:
+El proceso ETL se ejecuta mediante **AWS Lambda** (`src/etl/lambda_function.py`), activado automáticamente cuando se sube un archivo al bucket raw:
 
-1. **Extracción:** Lectura del CSV desde S3 `/raw/`
+1. **Extracción:** Lectura de `train.csv` y `store.csv` desde S3 `/raw/rossmann/`
 2. **Limpieza:**
-   - Eliminación de valores nulos
+   - Filtrado de tiendas cerradas (`Open=0`) y ventas nulas (`Sales=0`)
    - Eliminación de duplicados
-   - Filtrado de registros con ventas = 0 (tiendas cerradas)
+   - Tratamiento de nulos en `CompetitionDistance` (mediana) y columnas de promoción (0)
 3. **Transformación:**
-   - Generación de *lag features* (ventas semanas anteriores)
-   - Codificación de variables temporales (semana del año, mes, festivos)
-   - Normalización de variables numéricas
-4. **Carga:** Escritura del dataset procesado en S3 `/processed/`
+   - Merge de `train.csv` con `store.csv` por `Store`
+   - Extracción de variables temporales: `Year`, `Month`, `Week`, `DayOfYear`
+   - Codificación de variables categóricas: `StoreType`, `Assortment`, `StateHoliday`
+4. **Carga:** Escritura del dataset procesado en S3 `/processed/rossmann/`
+
+**Resultado del ETL:**
+- Filas entrada: 1.017.209
+- Filas salida: 844.338
+- Nulos restantes: 0
+- Columnas finales: 20
+
+---
+
+## Infraestructura como Código
+
+La infraestructura completa está definida en `infrastructure/template.yaml` usando **AWS SAM**. Para desplegarla:
+
+```bash
+# Descargar el template desde GitHub
+wget https://raw.githubusercontent.com/blasketch/prediccion-demanda-aws/main/infrastructure/template.yaml
+
+# Desplegar con SAM
+sam deploy \
+  --template-file template.yaml \
+  --stack-name prediccion-demanda \
+  --s3-bucket sam-deploy-<account-id> \
+  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+  --region us-east-1 \
+  --no-confirm-changeset
+```
+
+---
+
+## Recursos AWS desplegados
+
+| Recurso | Nombre | ARN |
+|---|---|---|
+| S3 Raw | prediccion-demanda-raw-319501512128 | `arn:aws:s3:::prediccion-demanda-raw-319501512128` |
+| S3 Processed | prediccion-demanda-processed-319501512128 | `arn:aws:s3:::prediccion-demanda-processed-319501512128` |
+| S3 Output | prediccion-demanda-output-319501512128 | `arn:aws:s3:::prediccion-demanda-output-319501512128` |
+| DynamoDB | PrediccionesTable | `arn:aws:dynamodb:us-east-1:319501512128:table/PrediccionesTable` |
 
 ---
 
 ## Tecnologías utilizadas
 
-- **Python 3.10** — lenguaje principal
-- **Pandas / NumPy** — procesamiento de datos
+- **Python 3.12** — lenguaje principal
+- **Pandas** — procesamiento y limpieza de datos
 - **Boto3** — SDK de AWS para Python
 - **Scikit-learn** — preprocesamiento y modelado
 - **XGBoost** — modelo de predicción
 - **Streamlit** — dashboard de visualización
-- **AWS:** S3, Lambda, SageMaker, DynamoDB, API Gateway, CloudWatch, IAM, KMS
+- **AWS SAM** — despliegue de infraestructura como código
+- **AWS:** S3, Lambda, SageMaker, DynamoDB, API Gateway, EventBridge, CloudWatch, IAM, KMS
 
 ---
 
 ## Seguridad
 
 - Buckets S3 privados — acceso público bloqueado
-- Cifrado en reposo: SSE-KMS
-- Cifrado en tránsito: HTTPS
-- IAM: principio de mínimo privilegio (rol `LabRole` en AWS Academy)
+- Cifrado en reposo: SSE-KMS (`alias/aws/s3`)
+- Cifrado en tránsito: HTTPS obligatorio (BucketPolicy con `aws:SecureTransport`)
+- IAM: rol `LabRole` de AWS Academy (mínimo privilegio en entorno académico)
+- EventBridge: `State: DISABLED` en entorno de pruebas para conservar créditos
 
 ---
 
@@ -132,7 +173,7 @@ El proceso ETL se ejecuta mediante un **SageMaker Processing Job** orquestado po
 | **Asignatura** | Proyecto de Inteligencia Artificial y Big Data |
 | **Institución** | Universitat Oberta de Catalunya (UOC) |
 | **Máster** | Máster en Inteligencia Artificial |
-| **Actividad** | A3 — Preparación y carga de datos en AWS |
+| **Actividad actual** | A3 — Preparación y carga de datos en AWS |
 
 ---
 
