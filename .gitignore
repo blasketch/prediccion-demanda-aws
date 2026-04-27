@@ -1,25 +1,73 @@
-# Datos crudos — almacenados en S3
+# ============================================
+# Datos
+# ============================================
+# Datos crudos — almacenados en S3, nunca en el repo
 data/archive/
 *.zip
 
-# CSV grandes — solo se permite el sample
+# CSVs grandes — solo se permite el sample para reproducibilidad
 data/sample/*.csv
 !data/sample/train_sample.csv
 
+# Otros formatos de datos pesados
+*.parquet
+
+# JSONs grandes (permitir los pequeños de notebooks/docs)
+data/**/*.json
+
+# ============================================
+# Modelos entrenados — viven en S3
+# ============================================
+*.pkl
+*.joblib
+*.tar.gz
+*.h5
+
+# ============================================
+# Jupyter
+# ============================================
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# ============================================
 # Python
+# ============================================
 __pycache__/
 *.pyc
 *.pyo
-.env
+*.egg-info/
+.pytest_cache/
 .venv/
+venv/
 
-# Jupyter
-.ipynb_checkpoints/
+# ============================================
+# Credenciales y configuración local
+# ============================================
+.env
+.aws/
+credentials
+*.pem
 
-# MacOS
-.DS_Store
-.DS_Store?
-
-# AWS
+# ============================================
+# AWS SAM CLI (R3)
+# ============================================
 .aws-sam/
 samconfig.toml
+
+# ============================================
+# Sistema operativo
+# ============================================
+.DS_Store
+.DS_Store?
+Thumbs.db
+
+# ============================================
+# IDEs
+# ============================================
+.vscode/
+.idea/
+
+# ============================================
+# Logs
+# ============================================
+*.log
