@@ -210,12 +210,12 @@ Si quieres reproducir el modelado paso a paso:
    ```
 
 3. **Ejecutar los notebooks en orden** dentro de `notebooks/`:
-   - `01_eda.ipynb` → análisis exploratorio y validación de splits
-   - `02_baseline_ingenuo.ipynb` → establecer suelo de rendimiento
-   - `03_linear_learner.ipynb` → primer modelo de ML (Ridge)
-   - `04_xgboost_base.ipynb` → XGBoost out-of-the-box
-   - `05_xgboost_features.ipynb` → feature engineering
-   - `06_xgboost_tuning.ipynb` → tuning y modelo final
+   - `01_eda.ipynb`  análisis exploratorio y validación de splits
+   - `02_baseline_ingenuo.ipynb`  establecer suelo de rendimiento
+   - `03_linear_learner.ipynb`  primer modelo de ML (Ridge)
+   - `04_xgboost_base.ipynb`  XGBoost out-of-the-box
+   - `05_xgboost_features.ipynb`  feature engineering
+   - `06_xgboost_tuning.ipynb`  tuning y modelo final
 4. **El modelo entrenado** queda disponible en S3 (`output/model.joblib`) listo para inferencia.
 
 ---
@@ -267,18 +267,6 @@ Los informes completos de cada actividad académica se encuentran en `docs/`:
 - **R2** — Diseño de la arquitectura AWS
 - **R3** — Pipeline ETL y preparación de datos
 - **R4** — Entrenamiento del modelo de Machine Learning
-
----
-
-## Contexto Académico
-
-| Campo                 | Detalle                                        |
-| --------------------- | ---------------------------------------------- |
-| **Asignatura**        | Proyecto de Inteligencia Artificial y Big Data |
-| **Institución**       | Universitat Oberta de Catalunya (UOC)          |
-| **Máster**            | Máster en Inteligencia Artificial              |
-| **Estado actual**     | A4 — Entrenamiento del modelo (completada)     |
-| **Próxima actividad** | A5 — Inferencia y despliegue del modelo        |
 
 ---
 
