@@ -1,0 +1,25 @@
+-----------------------------------------------------------------------------------------------------------------------------------------------------
+|                                                              DescribeStackResources                                                               |
++----------------------------------------+--------------------------------+-------------------------------------------------------------------------+
+|  ApiGateway                            |  AWS::ApiGateway::RestApi      |  36bjw4fzt5                                                             |
+|  ApiGatewayApiKey                      |  AWS::ApiGateway::ApiKey       |  z5xaw6tt1i                                                             |
+|  ApiGatewayDeploymenteb78a8ecae        |  AWS::ApiGateway::Deployment   |  c4iz0d                                                                 |
+|  ApiGatewayProdStage                   |  AWS::ApiGateway::Stage        |  Prod                                                                   |
+|  ApiGatewayUsagePlan                   |  AWS::ApiGateway::UsagePlan    |  tt8ivj                                                                 |
+|  ApiGatewayUsagePlanKey                |  AWS::ApiGateway::UsagePlanKey |  z5xaw6tt1i:tt8ivj                                                      |
+|  LambdaETL                             |  AWS::Lambda::Function         |  prediccion-demanda-LambdaETL                                           |
+|  LambdaETLLogGroup                     |  AWS::Logs::LogGroup           |  /aws/lambda/prediccion-demanda-LambdaETL                               |
+|  LambdaETLS3Permission                 |  AWS::Lambda::Permission       |  prediccion-demanda-LambdaETLS3Permission-WheRMiamiHgA                  |
+|  LambdaInferencia                      |  AWS::Lambda::Function         |  prediccion-demanda-LambdaInferencia-R4RUpSndnGNp                       |
+|  LambdaInferenciaApiGETPermissionProd  |  AWS::Lambda::Permission       |  prediccion-demanda-LambdaInferenciaApiGETPermissionProd-YDR1TvbyEfy3   |
+|  LambdaInferenciaApiPOSTPermissionProd |  AWS::Lambda::Permission       |  prediccion-demanda-LambdaInferenciaApiPOSTPermissionProd-Oc6KqnYxTp4u  |
+|  LambdaInferenciaLogGroup              |  AWS::Logs::LogGroup           |  /aws/lambda/prediccion-demanda-LambdaInferencia-R4RUpSndnGNp           |
+|  OutputBucket                          |  AWS::S3::Bucket               |  prediccion-demanda-output-319501512128                                 |
+|  OutputBucketPolicy                    |  AWS::S3::BucketPolicy         |  prediccion-demanda-output-319501512128                                 |
+|  PrediccionesTable                     |  AWS::DynamoDB::Table          |  PrediccionesTable                                                      |
+|  ProcessedDataBucket                   |  AWS::S3::Bucket               |  prediccion-demanda-processed-319501512128                              |
+|  ProcessedDataBucketPolicy             |  AWS::S3::BucketPolicy         |  prediccion-demanda-processed-319501512128                              |
+|  RawDataBucket                         |  AWS::S3::Bucket               |  prediccion-demanda-raw-319501512128                                    |
+|  RawDataBucketPolicy                   |  AWS::S3::BucketPolicy         |  prediccion-demanda-raw-319501512128                                    |
+|  ReentrenamientoSemanal                |  AWS::Scheduler::Schedule      |  prediccion-demanda-ReentrenamientoSemanal                              |
++----------------------------------------+--------------------------------+-------------------------------------------------------------------------+

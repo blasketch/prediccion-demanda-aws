@@ -213,12 +213,32 @@ Resources:
     Properties:
       Name: !Sub ${AWS::StackName}-ApiGateway
       StageName: Prod
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          UsagePlanName: !Sub ${AWS::StackName}-usage-plan
+          Description: Plan de uso para la API de predicción de demanda
+          Quota:
+            Limit: 1000
+            Period: DAY
+          Throttle:
+            BurstLimit: 50
+            RateLimit: 100
       DefinitionBody:
         openapi: '3.0'
         info: {}
+        components:
+          securitySchemes:
+            api_key:
+              type: apiKey
+              name: x-api-key
+              in: header
         paths:
           /prediccion:
             post:
+              security:
+                - api_key: []
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
@@ -226,6 +246,8 @@ Resources:
               responses: {}
           /predicciones/{store_id}:
             get:
+              security:
+                - api_key: []
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
