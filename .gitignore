@@ -71,3 +71,7 @@ Thumbs.db
 # Logs
 # ============================================
 *.log
+
+# R5 artifacts
+infrastructure/.aws-sam/
+infrastructure/template.yaml.bak

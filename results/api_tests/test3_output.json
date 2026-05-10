@@ -1,0 +1,1 @@
+{"store_id": 100, "fecha": "2015-09-17", "prediccion_unidades": 7421.96, "modelo": "xgboost-r4-final", "rmspe_test": 0.1483}
