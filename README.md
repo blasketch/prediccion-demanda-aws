@@ -1,35 +1,37 @@
 # Predicción de demanda para E-commerce en AWS
 
-Pipeline completo de predicción de demanda diaria por tienda para empresas de comercio electrónico, desplegado sobre servicios gestionados de AWS. Incluye infraestructura como código, ETL automatizado y un modelo XGBoost entrenado con feature engineering avanzado.
+Pipeline completo de predicción de demanda diaria por tienda para empresas de comercio electrónico, desplegado sobre servicios gestionados de AWS. Incluye infraestructura como código, ETL automatizado, modelo XGBoost entrenado con feature engineering avanzado, y **despliegue serverless del modelo como API REST autenticada con dashboard Streamlit como cliente visual**.
 
-> **Resultado del modelo final:** RMSPE de **14.83%** en test, una mejora del **61%** respecto al baseline ingenuo. Modelo serializado y disponible en S3 como Model Artifact reutilizable.
+> **Resultado del modelo final:** RMSPE de **14.83%** en test, una mejora del **61%** respecto al baseline ingenuo.  
+> **Sistema desplegado:** API REST con autenticación por API Key, latencia warm de **47 ms**, 0 errores en todas las pruebas funcionales.
 
 ---
 
 ## Descripción del Proyecto
 
-Las empresas de e-commerce pierden millones de euros anualmente por sobrestock y desabastecimiento. Este proyecto automatiza la **predicción de ventas diarias por tienda**, proporcionando a los equipos de compras y logística una estimación cuantitativa y reproducible basada en el histórico de ventas.
+Las empresas de e-commerce pierden millones de euros anualmente por sobrestock y desabastecimiento. Este proyecto automatiza la **predicción de ventas diarias por tienda**, proporcionando a los equipos de compras y logística una estimación cuantitativa y reproducible basada en el histórico de ventas, accesible mediante una API REST segura y un dashboard interactivo.
 
 **Objetivos:**
 
 - Reducir el exceso de inventario entre un 20% y un 30%
 - Elevar la tasa de disponibilidad de producto por encima del 95%
 - Automatizar el proceso de predicción sin intervención manual
+- Exponer el modelo de forma segura para integración con sistemas externos
 
 ## Arquitectura AWS
 
 El sistema está organizado en ocho zonas funcionales desplegadas sobre AWS:
 
-| Zona               | Servicios                                                 |
-| ------------------ | --------------------------------------------------------- |
-| Ingesta de datos   | Amazon S3 (Raw Data)                                      |
-| Procesamiento      | AWS Lambda (trigger) + SageMaker Processing Job           |
-| ML / Entrenamiento | SageMaker Notebook Instance + Amazon S3 (Model Artifacts) |
-| Inferencia         | SageMaker Endpoint + AWS Lambda + Amazon API Gateway      |
-| Persistencia       | Amazon DynamoDB + Amazon S3 (Predictions)                 |
-| Visualización      | Streamlit                                                 |
-| Observabilidad     | Amazon CloudWatch + AWS CloudTrail                        |
-| Seguridad          | AWS IAM + AWS KMS                                         |
+| Zona               | Servicios                                                            |
+| ------------------ | -------------------------------------------------------------------- |
+| Ingesta de datos   | Amazon S3 (Raw Data)                                                 |
+| Procesamiento      | AWS Lambda (trigger) + SageMaker Processing Job                      |
+| ML / Entrenamiento | SageMaker Notebook Instance + Amazon S3 (Model Artifacts)            |
+| Inferencia         | API Gateway REST + AWS Lambda (Container Image) + Amazon ECR         |
+| Persistencia       | Amazon DynamoDB + Amazon S3 (Predictions)                            |
+| Visualización      | Streamlit (cliente local de la API)                                  |
+| Observabilidad     | Amazon CloudWatch (Logs + Metrics) + AWS X-Ray                       |
+| Seguridad          | AWS IAM + AWS KMS + API Gateway API Keys + Usage Plans               |
 
 ---
 
@@ -39,14 +41,17 @@ El sistema está organizado en ocho zonas funcionales desplegadas sobre AWS:
 prediccion-demanda-aws/
 │
 ├── infrastructure/
-│   └── template.yaml                    # Infraestructura como código (SAM/CloudFormation)
+│   ├── template.yaml                    # Infraestructura como código (SAM/CloudFormation)
+│   └── samconfig.toml                   # Configuración SAM (stack, región, ECR auto)
 │
 ├── src/
 │   ├── etl/
 │   │   ├── lambda_function.py           # Lambda ETL — trigger S3
 │   │   └── etl_pipeline.py              # Script ETL completo
 │   ├── inferencia/
-│   │   └── lambda_function.py           # Lambda Inferencia — API Gateway
+│   │   ├── Dockerfile                   # Container Image del Lambda Inferencia (R5)
+│   │   ├── lambda_function.py           # Handler de inferencia (carga modelo desde S3)
+│   │   └── requirements.txt             # Dependencias Python del Lambda
 │   └── training/                        # Código auxiliar para entrenamiento (R4)
 │
 ├── notebooks/                           # Notebooks de modelado (R4)
@@ -57,19 +62,31 @@ prediccion-demanda-aws/
 │   ├── 05_xgboost_features.ipynb        # XGBoost + feature engineering
 │   └── 06_xgboost_tuning.ipynb          # Tuning + modelo final + Model Artifact
 │
-├── results/                             # Métricas y gráficos del modelado (R4)
-│   ├── metrics_comparison.csv           # Comparativa de métricas por iteración
-│   ├── tuning_results.csv               # Resultados del tuning de hiperparámetros
-│   ├── worst_stores_test.csv            # Análisis de errores por tienda
-│   └── plots/                           # Gráficos generados (8 PNG)
+├── scripts/
+│   └── build_store_metadata.py          # Genera store_metadata.csv para inferencia (R5)
 │
-├── docs/                                # Informes en PDF
+├── streamlit/                           # Dashboard cliente de la API (R5)
+│   ├── dashboard.py                     # Aplicación Streamlit (2 pestañas)
+│   ├── requirements.txt                 # Dependencias del dashboard
+│   ├── README.md                        # Instrucciones de ejecución local
+│   └── .streamlit/
+│       └── secrets.toml.example         # Plantilla de secretos (API_URL + API_KEY)
+│
+├── results/                             # Métricas, gráficos y pruebas funcionales
+│   ├── metrics_comparison.csv           # Comparativa de métricas por iteración (R4)
+│   ├── tuning_results.csv               # Resultados del tuning de hiperparámetros (R4)
+│   ├── worst_stores_test.csv            # Análisis de errores por tienda (R4)
+│   ├── plots/                           # Gráficos generados (8 PNG)
+│   └── api_tests/                       # 8 tests funcionales del despliegue (R5)
+│
+├── docs/                                # Informes en PDF y evidencias
 │   ├── R2_arquitectura.pdf
 │   ├── R3_etl.pdf
-│   └── R4_modelo.pdf
-│
-├── streamlit/
-│   └── dashboard.py                     # Dashboard de visualización
+│   ├── R4_modelo.pdf
+│   ├── informe_a5_ablascolo_prediccion_demanda_aws.pdf   # Informe R5
+│   ├── r5_recursos_aws.txt              # Tabla de ARNs/recursos del stack
+│   ├── r5_metricas_cloudwatch.txt       # Métricas reales del Lambda
+│   └── screenshots/                     # 8 capturas de evidencia (R5)
 │
 ├── data/
 │   └── sample/
@@ -107,11 +124,12 @@ s3://prediccion-demanda-processed-319501512128/
     │       ├── test_YYYYMMDD_HHMMSS.csv             # 15% — evaluación final
     │       └── scaler_params_YYYYMMDD_HHMMSS.json   # Parámetros del MinMaxScaler
     └── output/
-        └── model.joblib                             # Model Artifact (XGBoost serializado)
+        ├── model.joblib                             # Model Artifact (XGBoost serializado)
+        └── store_metadata.csv                       # Metadata estática de 1115 tiendas (R5)
 
 s3://prediccion-demanda-output-319501512128/
     └── predicciones/
-        └── predicciones_YYYYMMDD.csv                # Predicciones generadas por el modelo
+        └── prediccion_{store_id}_{fecha}.json       # Predicciones individuales (R5)
 ```
 
 ---
@@ -122,7 +140,7 @@ El proceso ETL se ejecuta mediante el script `src/etl/etl_pipeline.py`, invocado
 
 **Flujo completo:**
 
-1. **Trigger:** Se sube un CSV al bucket S3 raw -- Lambda detecta el evento `ObjectCreated`
+1. **Trigger:** Se sube un CSV al bucket S3 raw → Lambda detecta el evento `ObjectCreated`
 2. **Extracción:** Lectura de `train.csv` y `store.csv` desde S3 `/raw/rossmann/`
 3. **Limpieza:**
    - Filtrado de tiendas cerradas (`Open=0`) y ventas nulas (`Sales=0`)
@@ -134,7 +152,8 @@ El proceso ETL se ejecuta mediante el script `src/etl/etl_pipeline.py`, invocado
    - Codificación de variables categóricas: `StoreType`, `Assortment`, `StateHoliday`
    - Normalización MinMax de variables numéricas continuas
 5. **Carga:** Escritura del dataset procesado y splits train/validation/test en S3 `/processed/rossmann/`
-   **Resultado del ETL ejecutado:**
+
+**Resultado del ETL ejecutado:**
 
 - Filas entrada: 1.017.209
 - Filas salida: 844.338
@@ -168,7 +187,7 @@ El modelo se ha desarrollado en **AWS SageMaker Notebook Instance** (`ml.t3.medi
 ### Hallazgos clave
 
 - **El feature engineering aporta más que el cambio de algoritmo:** la transición de XGBoost base a XGBoost+FE reduce RMSPE en un 9.5%.
-- **`StoreDOW_Sales_mean` domina la importancia del modelo** con un 70.8% del gain. La media histórica de ventas por (tienda x día de la semana) es la señal más predictiva del dataset.
+- **`StoreDOW_Sales_mean` domina la importancia del modelo** con un 70.8% del gain. La media histórica de ventas por (tienda × día de la semana) es la señal más predictiva del dataset.
 - **Ridge sirve como caso de estudio metodológico:** su empeoramiento del 55% respecto al baseline ilustra cómo un modelo lineal con codificación inadecuada de variables categóricas puede ser peor que no usar Machine Learning.
 
 ### Hiperparámetros del modelo final
@@ -190,7 +209,111 @@ El modelo final está serializado con `joblib` y disponible en S3:
 s3://prediccion-demanda-processed-319501512128/output/model.joblib
 ```
 
-El artefacto contiene el modelo XGBoost entrenado, la lista de features ordenadas, las tablas de estadísticas históricas (`store_stats` y `store_dow_stats`) necesarias para enriquecer datos nuevos, los hiperparámetros óptimos y las métricas finales en test. Está listo para ser consumido por el pipeline de inferencia.
+El artefacto contiene el modelo XGBoost entrenado, la lista de features ordenadas, las tablas de estadísticas históricas (`store_stats` y `store_dow_stats`) necesarias para enriquecer datos nuevos, los hiperparámetros óptimos y las métricas finales en test.
+
+---
+
+## Despliegue del modelo (Reto 5)
+
+El modelo se expone como un servicio REST seguro y observable mediante una arquitectura serverless completamente gestionada con AWS SAM. Toda la lógica de inferencia vive en un Lambda empaquetado como Container Image que carga el `model.joblib` directamente desde S3.
+
+### Arquitectura
+
+```
+Cliente (cURL / Postman / Streamlit)
+   │ HTTPS + x-api-key
+   ▼
+API Gateway REST (Prod) ──► Lambda Inferencia (Container Image)
+                              │  Python 3.12 + xgboost 3.2.0 + sklearn
+                              │  1024 MB · 60s · 296 MB usados
+                              │
+                              ├──► DynamoDB (PrediccionesTable)
+                              └──► S3 output/ (JSON por predicción)
+                              ▲
+                              │ joblib.load (cold start)
+                              S3 processed (KMS):
+                                model.joblib (1.2 MB)
+                              + store_metadata.csv (77 KB)
+
+CloudWatch ← logs + métricas de toda la cadena
+ECR ← imagen Docker del Lambda Inferencia
+```
+
+### Endpoints expuestos
+
+| Método | Path                          | Descripción                                              |
+| ------ | ----------------------------- | -------------------------------------------------------- |
+| POST   | `/prediccion`                 | Solicita una nueva predicción para (`store_id`, `fecha`) |
+| GET    | `/predicciones/{store_id}`    | Devuelve el histórico de predicciones desde DynamoDB     |
+
+Ambos endpoints requieren el header `x-api-key` con la API Key del Usage Plan. Sin ella, la API responde `403 Forbidden`.
+
+### Reproducir el despliegue desde cero
+
+```bash
+git clone https://github.com/blasketch/prediccion-demanda-aws.git
+cd prediccion-demanda-aws
+
+# 1. Generar store_metadata.csv (única vez por cuenta AWS)
+python3 scripts/build_store_metadata.py
+
+# 2. Build + deploy de toda la infraestructura
+cd infrastructure
+sam build
+sam deploy
+```
+
+SAM gestiona automáticamente la construcción de la imagen Docker, su publicación en ECR (creado automáticamente gracias a `resolve_image_repos = true`), y el despliegue de todos los recursos CloudFormation respetando las dependencias entre ellos.
+
+### Consumir la API
+
+```bash
+# Obtener API Key, ID de la API y URL (una vez tras el deploy)
+KEY_ID=$(aws cloudformation describe-stack-resources --stack-name prediccion-demanda \
+  --query 'StackResources[?LogicalResourceId==`ApiGatewayApiKey`].PhysicalResourceId' --output text)
+API_KEY=$(aws apigateway get-api-key --api-key $KEY_ID --include-value \
+  --query 'value' --output text)
+API_ID=$(aws apigateway get-rest-apis \
+  --query 'items[?name==`prediccion-demanda-ApiGateway`].id' --output text)
+API_URL=https://$API_ID.execute-api.us-east-1.amazonaws.com/Prod
+
+# POST /prediccion — solicitar una predicción
+curl -X POST -H "Content-Type: application/json" -H "x-api-key: $API_KEY" \
+  -d '{"store_id": 1, "fecha": "2015-09-17", "promo": 1}' \
+  $API_URL/prediccion
+
+# Respuesta:
+# {"store_id": 1, "fecha": "2015-09-17",
+#  "prediccion_unidades": 4667.26,
+#  "modelo": "xgboost-r4-final",
+#  "rmspe_test": 0.1483}
+
+# GET /predicciones/{store_id} — consultar histórico
+curl -H "x-api-key: $API_KEY" $API_URL/predicciones/1
+```
+
+### Dashboard Streamlit (cliente local)
+
+```bash
+cd streamlit
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml
+# Editar secrets.toml con los valores reales de API_URL y API_KEY
+streamlit run dashboard.py
+```
+
+Abre <http://localhost:8501>. El dashboard tiene dos pestañas: **"Nueva predicción"** (formulario con inputs interactivos) e **"Histórico por tienda"** (consulta a DynamoDB).
+
+### Resultados clave del despliegue
+
+- **Latencia warm:** 47 ms (mediana, apta para uso interactivo)
+- **Cold start:** ~10-15 s (descarga del modelo + imports xgboost/sklearn)
+- **Memoria pico:** 296 MB de 1024 MB asignados (margen del 71%)
+- **Errores:** 0 en toda la batería de tests
+- **8 tests funcionales** documentados con input/output en [`results/api_tests/`](results/api_tests/)
+- **Capturas de evidencia** en [`docs/screenshots/`](docs/screenshots/)
+- **Métricas CloudWatch reales** en [`docs/r5_metricas_cloudwatch.txt`](docs/r5_metricas_cloudwatch.txt)
 
 ---
 
@@ -202,75 +325,37 @@ Si quieres reproducir el modelado paso a paso:
    - Tipo: `ml.t3.medium`
    - IAM role: `LabRole` (en AWS Academy)
    - Repositorio Git: clonar este repo automáticamente al crearla
+
 2. **Instalar dependencias** desde un terminal de Jupyter:
 
-   ```bash
+```bash
    pip install seaborn
    conda install -y -c conda-forge xgboost
-   ```
+```
 
 3. **Ejecutar los notebooks en orden** dentro de `notebooks/`:
-   - `01_eda.ipynb`  análisis exploratorio y validación de splits
-   - `02_baseline_ingenuo.ipynb`  establecer suelo de rendimiento
-   - `03_linear_learner.ipynb`  primer modelo de ML (Ridge)
-   - `04_xgboost_base.ipynb`  XGBoost out-of-the-box
-   - `05_xgboost_features.ipynb`  feature engineering
-   - `06_xgboost_tuning.ipynb`  tuning y modelo final
+   - `01_eda.ipynb` — análisis exploratorio y validación de splits
+   - `02_baseline_ingenuo.ipynb` — establecer suelo de rendimiento
+   - `03_linear_learner.ipynb` — primer modelo de ML (Ridge)
+   - `04_xgboost_base.ipynb` — XGBoost out-of-the-box
+   - `05_xgboost_features.ipynb` — feature engineering
+   - `06_xgboost_tuning.ipynb` — tuning y modelo final
+
 4. **El modelo entrenado** queda disponible en S3 (`output/model.joblib`) listo para inferencia.
 
 ---
 
 ## Recursos AWS desplegados
 
-| Recurso            | Nombre                                    | ARN                                                                                  |
-| ------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------ |
-| S3 Raw             | prediccion-demanda-raw-319501512128       | `arn:aws:s3:::prediccion-demanda-raw-319501512128`                                   |
-| S3 Processed       | prediccion-demanda-processed-319501512128 | `arn:aws:s3:::prediccion-demanda-processed-319501512128`                             |
-| S3 Output          | prediccion-demanda-output-319501512128    | `arn:aws:s3:::prediccion-demanda-output-319501512128`                                |
-| DynamoDB           | PrediccionesTable                         | `arn:aws:dynamodb:us-east-1:319501512128:table/PrediccionesTable`                    |
-| Lambda ETL         | prediccion-demanda-LambdaETL              | `arn:aws:lambda:us-east-1:319501512128:function:prediccion-demanda-LambdaETL`        |
-| Lambda Inferencia  | prediccion-demanda-LambdaInferencia       | `arn:aws:lambda:us-east-1:319501512128:function:prediccion-demanda-LambdaInferencia` |
-| SageMaker Notebook | notebook-r4-prediccion-demanda            | Instance type `ml.t3.medium`, IAM role `LabRole`                                     |
-
----
-
-## Tecnologías utilizadas
-
-- **Python 3.12** — lenguaje principal
-- **Pandas** — procesamiento y limpieza de datos
-- **NumPy** — cálculo numérico y operaciones vectorizadas
-- **Scikit-learn** — preprocesamiento, métricas y baseline lineal
-- **XGBoost** — modelo de predicción principal
-- **Matplotlib + Seaborn** — visualización de resultados
-- **Joblib** — serialización del Model Artifact
-- **Boto3** — SDK de AWS para Python
-- **Streamlit** — dashboard de visualización
-- **AWS SAM** — despliegue de infraestructura como código
-- **AWS:** S3, Lambda, SageMaker, DynamoDB, API Gateway, EventBridge, CloudWatch, IAM, KMS
-
----
-
-## Seguridad
-
-- Buckets S3 privados — acceso público bloqueado
-- Cifrado en reposo: SSE-KMS (`alias/aws/s3`)
-- Cifrado en tránsito: HTTPS obligatorio (BucketPolicy con `aws:SecureTransport`)
-- IAM: rol `LabRole` de AWS Academy (mínimo privilegio en entorno académico)
-- EventBridge: `State: DISABLED` en entorno de pruebas para conservar créditos
-
----
-
-## Documentación
-
-Los informes completos de cada actividad académica se encuentran en `docs/`:
-
-- **R2** — Diseño de la arquitectura AWS
-- **R3** — Pipeline ETL y preparación de datos
-- **R4** — Entrenamiento del modelo de Machine Learning
-
----
-
-## Autor
-
-**Adrián Blasco Lozano**
-Máster en Inteligencia Artificial — UOC
+| Recurso              | Identificador                                                         |
+| -------------------- | --------------------------------------------------------------------- |
+| S3 Raw               | `prediccion-demanda-raw-319501512128`                                 |
+| S3 Processed         | `prediccion-demanda-processed-319501512128`                           |
+| S3 Output            | `prediccion-demanda-output-319501512128`                              |
+| DynamoDB             | `PrediccionesTable`                                                   |
+| Lambda ETL           | `prediccion-demanda-LambdaETL`                                        |
+| Lambda Inferencia    | `prediccion-demanda-LambdaInferencia-R4RUpSndnGNp` (Container Image)  |
+| API Gateway          | `36bjw4fzt5` · stage `Prod`                                           |
+| API Key              | `z5xaw6tt1i` (Usage Plan: 1000 req/día, 100 RPS, burst 50)            |
+| Usage Plan           | `tt8ivj`                                                              |
+| ECR Repository       | `predicciondemand
