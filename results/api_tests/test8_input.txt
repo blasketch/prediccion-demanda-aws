@@ -1,0 +1,1 @@
+GET /predicciones/1 con header x-api-key: <REDACTED>

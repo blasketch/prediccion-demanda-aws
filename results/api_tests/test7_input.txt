@@ -1,0 +1,1 @@
+POST /prediccion con header x-api-key: <REDACTED>

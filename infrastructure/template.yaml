@@ -2,7 +2,6 @@ Transform: AWS::Serverless-2016-10-31
 
 Globals:
   Function:
-    Runtime: python3.12
     Architectures:
       - x86_64
     Tracing: Active
@@ -136,7 +135,8 @@ Resources:
     Properties:
       FunctionName: !Sub ${AWS::StackName}-LambdaETL
       Description: Limpia y transforma los datos raw de Rossmann y los carga en S3 processed
-      CodeUri: src/etl/
+      Runtime: python3.12
+      CodeUri: ../src/etl/
       Handler: lambda_function.lambda_handler
       MemorySize: 512
       Timeout: 300
@@ -169,12 +169,10 @@ Resources:
   LambdaInferencia:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub ${AWS::StackName}-LambdaInferencia
-      Description: Recibe peticiones del API Gateway, llama a SageMaker y guarda predicciones
-      CodeUri: src/inferencia/
-      Handler: lambda_function.lambda_handler
-      MemorySize: 512
-      Timeout: 30
+      Description: Recibe peticiones del API Gateway, predice con XGBoost y guarda predicciones
+      PackageType: Image
+      MemorySize: 1024
+      Timeout: 60
       Role: !Sub arn:aws:iam::${AWS::AccountId}:role/LabRole
       Events:
         ApiPOST:
@@ -192,8 +190,12 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref PrediccionesTable
-          SAGEMAKER_ENDPOINT: prediccion-demanda-endpoint
           OUTPUT_BUCKET: !Ref OutputBucket
+          PROCESSED_BUCKET: !Ref ProcessedDataBucket
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: ../src/inferencia/
+      DockerTag: v1
 
   LambdaInferenciaLogGroup:
     Type: AWS::Logs::LogGroup
@@ -211,12 +213,32 @@ Resources:
     Properties:
       Name: !Sub ${AWS::StackName}-ApiGateway
       StageName: Prod
+      Auth:
+        ApiKeyRequired: true
+        UsagePlan:
+          CreateUsagePlan: PER_API
+          UsagePlanName: !Sub ${AWS::StackName}-usage-plan
+          Description: Plan de uso para la API de predicción de demanda
+          Quota:
+            Limit: 1000
+            Period: DAY
+          Throttle:
+            BurstLimit: 50
+            RateLimit: 100
       DefinitionBody:
         openapi: '3.0'
         info: {}
+        components:
+          securitySchemes:
+            api_key:
+              type: apiKey
+              name: x-api-key
+              in: header
         paths:
           /prediccion:
             post:
+              security:
+                - api_key: []
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
@@ -224,6 +246,8 @@ Resources:
               responses: {}
           /predicciones/{store_id}:
             get:
+              security:
+                - api_key: []
               x-amazon-apigateway-integration:
                 httpMethod: POST
                 type: aws_proxy
